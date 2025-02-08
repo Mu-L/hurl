@@ -16,12 +16,10 @@ Variables in a Hurl file can be created from captures or [injected into the sess
 
 # First GET request to get CSRF token value:
 GET https://example.org
-
 HTTP 200
 # Capture the CSRF token value from html body.
 [Captures]
 csrf_token: xpath "normalize-space(//meta[@name='_csrf_token']/@content)"
-
 
 # Do the login !
 POST https://acmecorp.net/login?user=toto&password=1234
@@ -41,7 +39,6 @@ Structure of a capture:
 
 A capture consists of a variable name, followed by `:` and a query. Captures
 section starts with `[Captures]`.
-
 
 ### Query
 
@@ -71,7 +68,6 @@ keyword `status`.
 
 ```hurl
 GET https://example.org
-
 HTTP 200
 [Captures]
 my_status: status
@@ -87,7 +83,6 @@ POST https://example.org/login
 [FormParams]
 user: toto
 password: 12345678
-
 HTTP 302
 [Captures]
 next_url: header "Location"
@@ -95,14 +90,13 @@ next_url: header "Location"
 
 ### URL capture
 
-Capture the last fetched URL. This is most meaningful if you have told Hurl to follow redirection (see [`[Options]`section][options] or
+Capture the last fetched URL. This is most meaningful if you have told Hurl to follow redirection (see [`[Options]` section][options] or
 [`--location` option]). URL capture consists of a variable name, followed by a `:`, and the keyword `url`.
 
 ```hurl
 GET https://example.org/redirecting
 [Options]
 location: true
-
 HTTP 200
 [Captures]
 landing_url: url
@@ -116,7 +110,6 @@ and a cookie name.
 
 ```hurl
 GET https://example.org/cookies/set
-
 HTTP 200
 [Captures]
 session-id: cookie "LSID"
@@ -128,7 +121,6 @@ Cookie attributes value can also be captured by using the following format:
 
 ```hurl
 GET https://example.org/cookies/set
-
 HTTP 200
 [Captures]
 value1: cookie "LSID"
@@ -142,7 +134,6 @@ http-only: cookie "LSID[HttpOnly]"
 same-site: cookie "LSID[SameSite]"
 ```
 
-
 ### Body capture
 
 Capture the entire body (decoded as text) from the received HTTP response. The encoding used to decode the body 
@@ -150,7 +141,6 @@ is based on the `charset` value in the `Content-Type` header response.
 
 ```hurl
 GET https://example.org/home
-
 HTTP 200
 [Captures]
 my_body: body
@@ -164,12 +154,10 @@ bytes.
 # But, the 'Content-Type' HTTP response header doesn't precise any charset,
 # so we decode explicitly the bytes.
 GET https://example.org/cn
-
 HTTP 200
 [Captures]
 my_body: bytes decode "gb2312"
 ```
-
 
 ### Bytes capture
 
@@ -177,12 +165,10 @@ Capture the entire body (as a raw bytestream) from the received HTTP response
 
 ```hurl
 GET https://example.org/data.bin
-
 HTTP 200
 [Captures]
 my_data: bytes
 ```
-
 
 ### XPath capture
 
@@ -191,11 +177,10 @@ Currently, only XPath 1.0 expression can be used.
 
 ```hurl
 GET https://example.org/home
-
 # Capture the identifier from the dom node <div id="pet0">5646eaf23</div
 HTTP 200
 [Captures]
-ped-id: xpath "normalize-space(//div[@id='pet0'])"
+pet-id: xpath "normalize-space(//div[@id='pet0'])"
 
 # Open the captured page.
 GET https://example.org/home/pets/{{pet-id}}
@@ -208,7 +193,6 @@ valid XPath can be captured and asserted with variable asserts.
 ```hurl
 # Test that the XML endpoint return 200 pets
 GET https://example.org/api/pets
-
 HTTP 200
 [Captures]
 pets: xpath "//pets"
@@ -220,12 +204,10 @@ XPath expression can also be evaluated against part of the body with a [`xpath` 
 
 ```hurl
 GET https://example.org/home_cn
-
 HTTP 200
 [Captures]
-ped-id: bytes decode "gb2312" xpath "normalize-space(//div[@id='pet0'])"
+pet-id: bytes decode "gb2312" xpath "normalize-space(//div[@id='pet0'])"
 ```
-
 
 ### JSONPath capture
 
@@ -236,7 +218,6 @@ POST https://example.org/api/contact
 [FormParams]
 token: {{token}}
 email: toto@rookie.net
-
 HTTP 200
 [Captures]
 contact-id: jsonpath "$['id']"
@@ -269,7 +250,6 @@ We can capture the following paths:
 
 ```hurl
 GET https://example.org/captures-json
-
 HTTP 200
 [Captures]
 an_object:  jsonpath "$['an_object']"
@@ -282,14 +262,12 @@ a_string:   jsonpath "$['a_string']"
 all:        jsonpath "$"
 ```
 
-
 ### Regex capture
 
 Capture a regex pattern from the HTTP received body, decoded as text.
 
 ```hurl
 GET https://example.org/helloworld
-
 HTTP 200
 [Captures]
 id_a: regex "id_a:([0-9]+)"
@@ -302,14 +280,12 @@ The regex pattern must have at least one capture group, otherwise the
 capture will fail. When the pattern is a double-quoted string, metacharacters beginning with a backslash in the pattern
 (like `\d`, `\s`) must be escaped; literal pattern enclosed by `/` can also be used to avoid metacharacters escaping. 
 
-
 ### Variable capture
 
 Capture the value of a variable into another.
 
 ```hurl
 GET https://example.org/helloworld
-
 HTTP 200
 [Captures]
 in: body
@@ -322,7 +298,6 @@ Capture the response time of the request in ms.
 
 ```hurl
 GET https://example.org/helloworld
-
 HTTP 200
 [Captures]
 duration_in_ms: duration
@@ -336,7 +311,6 @@ The following attributes are supported: `Subject`, `Issuer`, `Start-Date`, `Expi
 
 ```hurl
 GET https://example.org
-
 HTTP 200
 [Captures]
 cert_subject: certificate "Subject"
@@ -345,6 +319,23 @@ cert_expire_date: certificate "Expire-Date"
 cert_serial_number: certificate "Serial-Number"
 ```
 
+## Redacting Secrets
+
+Secrets can be redacted from logs and reports using [`--secret` option]:
+
+```shell
+$ hurl --secret pass=sesame-ouvre-toi file.hurl
+```
+
+If the secret value to be redacted is dynamic, or not known before execution, a capture can become a secret using `redact`
+at the end of the query's capture:
+
+```hurl
+GET https://foo.com
+HTTP 200
+[Captures]
+pass: header "token" redact
+```
 
 [CSRF tokens]: https://en.wikipedia.org/wiki/Cross-site_request_forgery
 [injected into the session]: /docs/templates.md#injecting-variables
@@ -358,3 +349,4 @@ cert_serial_number: certificate "Serial-Number"
 [filters]: /docs/filters.md
 [`xpath` filter]: /docs/filters.md#xpath
 [`decode` filter]: /docs/filters.md#decode
+[`--secret` option]: /docs/templates.md#secrets

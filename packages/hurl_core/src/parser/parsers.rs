@@ -1,6 +1,6 @@
 /*
  * Hurl (https://hurl.dev)
- * Copyright (C) 2023 Orange
+ * Copyright (C) 2025 Orange
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,16 +16,20 @@
  *
  */
 use crate::ast::VersionValue::VersionAny;
-use crate::ast::*;
-use crate::parser::bytes::*;
-use crate::parser::combinators::*;
-use crate::parser::error::*;
-use crate::parser::number::natural;
-use crate::parser::primitives::*;
-use crate::parser::reader::Reader;
-use crate::parser::sections::*;
-use crate::parser::url::url;
-use crate::parser::ParseResult;
+use crate::ast::{
+    Body, Entry, HurlFile, Method, Request, Response, SourceInfo, Status, StatusValue, Version,
+    VersionValue,
+};
+use crate::combinator::{optional, zero_or_more};
+use crate::parser::bytes::bytes;
+use crate::parser::primitives::{
+    eof, key_value, line_terminator, one_or_more_spaces, optional_line_terminators, try_literal,
+    zero_or_more_spaces,
+};
+use crate::parser::sections::{request_sections, response_sections};
+use crate::parser::string::unquoted_template;
+use crate::parser::{ParseError, ParseErrorKind, ParseResult};
+use crate::reader::Reader;
 
 pub fn hurl_file(reader: &mut Reader) -> ParseResult<HurlFile> {
     let entries = zero_or_more(entry, reader)?;
@@ -47,154 +51,148 @@ fn entry(reader: &mut Reader) -> ParseResult<Entry> {
 }
 
 fn request(reader: &mut Reader) -> ParseResult<Request> {
-    let start = reader.state;
+    let start = reader.cursor();
     let line_terminators = optional_line_terminators(reader)?;
     let space0 = zero_or_more_spaces(reader)?;
-    let m = method(reader)?;
+    let method = method(reader)?;
     let space1 = one_or_more_spaces(reader)?;
-    let u = url(reader)?;
-
+    let url = unquoted_template(reader)?;
     let line_terminator0 = line_terminator(reader)?;
     let headers = zero_or_more(key_value, reader)?;
     let sections = request_sections(reader)?;
-    let b = optional(body, reader)?;
-    let source_info = SourceInfo::new(start.pos, reader.state.pos);
+    let body = optional(body, reader)?;
+    let source_info = SourceInfo::new(start.pos, reader.cursor().pos);
 
     // Check duplicated section
     let mut section_names = vec![];
-    for section in sections.clone() {
-        if section_names.contains(&section.name().to_string()) {
-            return Err(Error {
-                pos: section.source_info.start,
-                recoverable: false,
-                inner: ParseError::DuplicateSection,
-            });
+    for section in &sections {
+        if section_names.contains(&section.identifier()) {
+            return Err(ParseError::new(
+                section.source_info.start,
+                false,
+                ParseErrorKind::DuplicateSection,
+            ));
         } else {
-            section_names.push(section.name().to_string());
+            section_names.push(section.identifier());
         }
     }
 
     Ok(Request {
         line_terminators,
         space0,
-        method: m,
+        method,
         space1,
-        url: u,
+        url,
         line_terminator0,
         headers,
         sections,
-        body: b,
+        body,
         source_info,
     })
 }
 
 fn response(reader: &mut Reader) -> ParseResult<Response> {
-    let start = reader.state;
+    let start = reader.cursor();
     let line_terminators = optional_line_terminators(reader)?;
     let space0 = zero_or_more_spaces(reader)?;
-    let _version = version(reader)?;
+    let version = version(reader)?;
     let space1 = one_or_more_spaces(reader)?;
-    let _status = status(reader)?;
+    let status = status(reader)?;
     let line_terminator0 = line_terminator(reader)?;
     let headers = zero_or_more(key_value, reader)?;
     let sections = response_sections(reader)?;
-    let b = optional(body, reader)?;
+    let body = optional(body, reader)?;
+    let source_info = SourceInfo::new(start.pos, reader.cursor().pos);
+
     Ok(Response {
         line_terminators,
         space0,
-        version: _version,
+        version,
         space1,
-        status: _status,
+        status,
         line_terminator0,
         headers,
         sections,
-        body: b,
-        source_info: SourceInfo::new(start.pos, reader.state.pos),
+        body,
+        source_info,
     })
 }
 
 fn method(reader: &mut Reader) -> ParseResult<Method> {
     if reader.is_eof() {
-        return Err(Error {
-            pos: reader.state.pos,
-            recoverable: true,
-            inner: ParseError::Method {
-                name: "<EOF>".to_string(),
-            },
-        });
+        let kind = ParseErrorKind::Method {
+            name: "<EOF>".to_string(),
+        };
+        return Err(ParseError::new(reader.cursor().pos, true, kind));
     }
-    let start = reader.state;
+    let start = reader.cursor();
     let name = reader.read_while(|c| c.is_ascii_alphabetic());
     if name.is_empty() || name.to_uppercase() != name {
-        Err(Error {
-            pos: start.pos,
-            recoverable: false,
-            inner: ParseError::Method { name },
-        })
+        let kind = ParseErrorKind::Method { name };
+        Err(ParseError::new(start.pos, false, kind))
     } else {
         Ok(Method(name))
     }
 }
 
 fn version(reader: &mut Reader) -> ParseResult<Version> {
-    let start = reader.state;
+    let start = reader.cursor();
     try_literal("HTTP", reader)?;
 
     let next_c = reader.peek();
     match next_c {
         Some('/') => {
-            let available_version = vec![
+            let available_version = [
                 ("/1.0", VersionValue::Version1),
                 ("/1.1", VersionValue::Version11),
                 ("/2", VersionValue::Version2),
                 ("/3", VersionValue::Version3),
-                ("/*", VersionValue::VersionAnyLegacy),
             ];
             for (s, value) in available_version.iter() {
                 if try_literal(s, reader).is_ok() {
                     return Ok(Version {
                         value: value.clone(),
-                        source_info: SourceInfo::new(start.pos, reader.state.pos),
+                        source_info: SourceInfo::new(start.pos, reader.cursor().pos),
                     });
                 }
             }
-            Err(Error {
-                pos: start.pos,
-                recoverable: false,
-                inner: ParseError::Version,
-            })
+            Err(ParseError::new(start.pos, false, ParseErrorKind::Version))
         }
-        Some(' ') => Ok(Version {
+        Some(' ') | Some('\t') => Ok(Version {
             value: VersionAny,
-            source_info: SourceInfo::new(start.pos, reader.state.pos),
+            source_info: SourceInfo::new(start.pos, reader.cursor().pos),
         }),
-        _ => Err(Error {
-            pos: start.pos,
-            recoverable: false,
-            inner: ParseError::Version,
-        }),
+        _ => Err(ParseError::new(start.pos, false, ParseErrorKind::Version)),
     }
 }
 
 fn status(reader: &mut Reader) -> ParseResult<Status> {
-    let start = reader.state.pos;
+    let start = reader.cursor();
     let value = match try_literal("*", reader) {
         Ok(_) => StatusValue::Any,
-        Err(_) => match natural(reader) {
-            Ok(value) => StatusValue::Specific(value),
-            Err(_) => {
-                return Err(Error {
-                    pos: start,
-                    recoverable: false,
-                    inner: ParseError::Status,
-                });
+        Err(_) => {
+            if reader.is_eof() {
+                let kind = ParseErrorKind::Status;
+                return Err(ParseError::new(start.pos, false, kind));
             }
-        },
+            let s = reader.read_while(|c| c.is_ascii_digit());
+            if s.is_empty() {
+                let kind = ParseErrorKind::Status;
+                return Err(ParseError::new(start.pos, false, kind));
+            }
+            match s.to_string().parse() {
+                Ok(value) => StatusValue::Specific(value),
+                Err(_) => {
+                    let kind = ParseErrorKind::Status;
+                    return Err(ParseError::new(start.pos, false, kind));
+                }
+            }
+        }
     };
-    let end = reader.state.pos;
+    let end = reader.cursor();
     Ok(Status {
         value,
-        source_info: SourceInfo { start, end },
+        source_info: SourceInfo::new(start.pos, end.pos),
     })
 }
 
@@ -215,6 +213,12 @@ fn body(reader: &mut Reader) -> ParseResult<Body> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ast::{
+        Bytes, Comment, JsonListElement, JsonValue, LineTerminator, MultilineString,
+        MultilineStringKind, Template, TemplateElement, Text, Whitespace,
+    };
+    use crate::reader::Pos;
+    use crate::typing::{SourceString, ToSource};
 
     #[test]
     fn test_hurl_file() {
@@ -228,7 +232,7 @@ mod tests {
         let mut reader = Reader::new("GET http://google.fr");
         let e = entry(&mut reader).unwrap();
         assert_eq!(e.request.method, Method("GET".to_string()));
-        assert_eq!(reader.state.cursor, 20);
+        assert_eq!(reader.cursor().index, 20);
     }
 
     #[test]
@@ -237,26 +241,26 @@ mod tests {
 
         let e = entry(&mut reader).unwrap();
         assert_eq!(e.request.method, Method("GET".to_string()));
-        assert_eq!(reader.state.cursor, 21);
-        assert_eq!(reader.state.pos.line, 2);
+        assert_eq!(reader.cursor().index, 21);
+        assert_eq!(reader.cursor().pos.line, 2);
 
         let e = entry(&mut reader).unwrap();
         assert_eq!(e.request.method, Method("GET".to_string()));
-        assert_eq!(reader.state.cursor, 41);
-        assert_eq!(reader.state.pos.line, 2);
+        assert_eq!(reader.cursor().index, 41);
+        assert_eq!(reader.cursor().pos.line, 2);
 
         let mut reader =
             Reader::new("GET http://google.fr # comment1\nGET http://google.fr # comment2");
 
         let e = entry(&mut reader).unwrap();
         assert_eq!(e.request.method, Method("GET".to_string()));
-        assert_eq!(reader.state.cursor, 32);
-        assert_eq!(reader.state.pos.line, 2);
+        assert_eq!(reader.cursor().index, 32);
+        assert_eq!(reader.cursor().pos.line, 2);
 
         let e = entry(&mut reader).unwrap();
         assert_eq!(e.request.method, Method("GET".to_string()));
-        assert_eq!(reader.state.cursor, 63);
-        assert_eq!(reader.state.pos.line, 2);
+        assert_eq!(reader.cursor().index, 63);
+        assert_eq!(reader.cursor().pos.line, 2);
     }
 
     #[test]
@@ -284,7 +288,7 @@ mod tests {
             url: Template {
                 elements: vec![TemplateElement::String {
                     value: String::from("http://google.fr"),
-                    encoded: String::from("http://google.fr"),
+                    source: SourceString::from("http://google.fr"),
                 }],
                 delimiter: None,
                 source_info: SourceInfo::new(Pos::new(1, 5), Pos::new(1, 21)),
@@ -306,7 +310,7 @@ mod tests {
             source_info: SourceInfo::new(Pos::new(1, 1), Pos::new(1, 21)),
         };
         assert_eq!(request(&mut reader).unwrap(), default_request);
-        assert_eq!(reader.state.cursor, 20);
+        assert_eq!(reader.cursor().index, 20);
 
         let mut reader = Reader::new("GET  http://google.fr # comment");
         let default_request = Request {
@@ -323,7 +327,7 @@ mod tests {
             url: Template {
                 elements: vec![TemplateElement::String {
                     value: String::from("http://google.fr"),
-                    encoded: String::from("http://google.fr"),
+                    source: SourceString::from("http://google.fr"),
                 }],
                 delimiter: None,
                 source_info: SourceInfo::new(Pos::new(1, 6), Pos::new(1, 22)),
@@ -348,12 +352,12 @@ mod tests {
             source_info: SourceInfo::new(Pos::new(1, 1), Pos::new(1, 32)),
         };
         assert_eq!(request(&mut reader).unwrap(), default_request);
-        assert_eq!(reader.state.cursor, 31);
+        assert_eq!(reader.cursor().index, 31);
 
         let mut reader = Reader::new("GET http://google.fr\nGET http://google.fr");
         let r = request(&mut reader).unwrap();
         assert_eq!(r.method, Method("GET".to_string()));
-        assert_eq!(reader.state.cursor, 21);
+        assert_eq!(reader.cursor().index, 21);
         let r = request(&mut reader).unwrap();
         assert_eq!(r.method, Method("GET".to_string()));
     }
@@ -374,24 +378,27 @@ mod tests {
                     value: String::new(),
                     source_info: SourceInfo::new(Pos::new(2, 1), Pos::new(2, 1)),
                 },
-                value: Bytes::MultilineString(MultilineString::Text(Text {
-                    space: Whitespace {
-                        value: String::new(),
-                        source_info: SourceInfo::new(Pos::new(2, 4), Pos::new(2, 4)),
-                    },
-                    newline: Whitespace {
-                        source_info: SourceInfo::new(Pos::new(2, 4), Pos::new(3, 1)),
-                        value: "\n".to_string(),
-                    },
-                    value: Template {
-                        elements: vec![TemplateElement::String {
-                            value: String::from("Hello World!\n"),
-                            encoded: String::from("Hello World!\n"),
-                        }],
-                        delimiter: None,
-                        source_info: SourceInfo::new(Pos::new(3, 1), Pos::new(4, 1)),
-                    },
-                })),
+                value: Bytes::MultilineString(MultilineString {
+                    kind: MultilineStringKind::Text(Text {
+                        space: Whitespace {
+                            value: String::new(),
+                            source_info: SourceInfo::new(Pos::new(2, 4), Pos::new(2, 4)),
+                        },
+                        newline: Whitespace {
+                            source_info: SourceInfo::new(Pos::new(2, 4), Pos::new(3, 1)),
+                            value: "\n".to_string(),
+                        },
+                        value: Template {
+                            elements: vec![TemplateElement::String {
+                                value: String::from("Hello World!\n"),
+                                source: SourceString::from("Hello World!\n"),
+                            }],
+                            delimiter: None,
+                            source_info: SourceInfo::new(Pos::new(3, 1), Pos::new(4, 1)),
+                        },
+                    }),
+                    attributes: vec![]
+                }),
                 line_terminator0: LineTerminator {
                     space0: Whitespace {
                         value: String::new(),
@@ -445,7 +452,7 @@ mod tests {
                 delimiter: Some('"'),
                 elements: vec![TemplateElement::String {
                     value: "Hello".to_string(),
-                    encoded: "Hello".to_string(),
+                    source: "Hello".to_source(),
                 }],
                 source_info: SourceInfo::new(Pos::new(2, 2), Pos::new(2, 7)),
             }))
@@ -482,24 +489,32 @@ mod tests {
         let mut reader = Reader::new("xxx ");
         let error = method(&mut reader).err().unwrap();
         assert_eq!(error.pos, Pos { line: 1, column: 1 });
-        assert_eq!(reader.state.cursor, 3);
+        assert_eq!(reader.cursor().index, 3);
 
         let mut reader = Reader::new("");
         let error = method(&mut reader).err().unwrap();
         assert_eq!(error.pos, Pos { line: 1, column: 1 });
-        assert_eq!(reader.state.cursor, 0);
+        assert_eq!(reader.cursor().index, 0);
 
         let mut reader = Reader::new("GET ");
         assert_eq!(method(&mut reader).unwrap(), Method("GET".to_string()));
-        assert_eq!(reader.state.cursor, 3);
+        assert_eq!(reader.cursor().index, 3);
 
         let mut reader = Reader::new("CUSTOM");
         assert_eq!(method(&mut reader).unwrap(), Method("CUSTOM".to_string()));
-        assert_eq!(reader.state.cursor, 6);
+        assert_eq!(reader.cursor().index, 6);
     }
 
     #[test]
     fn test_version() {
+        let mut reader = Reader::new("HTTP 200");
+        assert_eq!(version(&mut reader).unwrap().value, VersionAny);
+        assert_eq!(reader.cursor().index, 4);
+
+        let mut reader = Reader::new("HTTP\t200");
+        assert_eq!(version(&mut reader).unwrap().value, VersionAny);
+        assert_eq!(reader.cursor().index, 4);
+
         let mut reader = Reader::new("HTTP/1.1 200");
         assert_eq!(version(&mut reader).unwrap().value, VersionValue::Version11);
 
@@ -551,7 +566,7 @@ mod tests {
                 ],
             })
         );
-        assert_eq!(reader.state.cursor, 8);
+        assert_eq!(reader.cursor().index, 8);
 
         let mut reader = Reader::new("{}");
         let b = body(&mut reader).unwrap();
@@ -563,7 +578,7 @@ mod tests {
                 elements: vec![],
             })
         );
-        assert_eq!(reader.state.cursor, 2);
+        assert_eq!(reader.cursor().index, 2);
 
         let mut reader = Reader::new("# comment\n {} # comment\nxxx");
         let b = body(&mut reader).unwrap();
@@ -575,7 +590,7 @@ mod tests {
                 elements: vec![],
             })
         );
-        assert_eq!(reader.state.cursor, 24);
+        assert_eq!(reader.cursor().index, 24);
 
         let mut reader = Reader::new("{x");
         let error = body(&mut reader).err().unwrap();

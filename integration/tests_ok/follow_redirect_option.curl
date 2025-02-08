@@ -1,5 +1,0 @@
-curl 'http://localhost:8000/follow-redirect'
-curl 'http://localhost:8000/follow-redirect'
-curl --location 'http://localhost:8000/follow-redirect'
-curl --data '' --location 'http://localhost:8000/follow-redirect'
-curl --data '' --location 'http://localhost:8000/follow-redirect-308'

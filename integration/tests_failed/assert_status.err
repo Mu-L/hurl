@@ -1,7 +1,0 @@
-error: Assert status code
-  --> tests_failed/assert_status.hurl:9:6
-   |
- 9 | HTTP 200
-   |      ^^^ actual value is <404>
-   |
-

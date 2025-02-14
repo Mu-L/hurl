@@ -1,7 +1,0 @@
-error: HTTP connection
-  --> tests_failed/invalid_url.hurl:1:5
-   |
- 1 | GET https://???
-   |     ^^^^^^^^^^^ (3) ~~~
-   |
-

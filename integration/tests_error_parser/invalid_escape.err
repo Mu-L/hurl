@@ -1,8 +1,0 @@
-'equals' predicate is now deprecated. Use '==' instead
-error: Parsing escape character
-  --> tests_error_parser/invalid_escape.hurl:4:25
-   |
- 4 | xpath "//item" equals "\d\d\d\d-\d\d-\d\d"
-   |                         ^ the escaping sequence is not valid
-   |
-

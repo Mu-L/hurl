@@ -1,6 +1,6 @@
 /*
  * Hurl (https://hurl.dev)
- * Copyright (C) 2023 Orange
+ * Copyright (C) 2025 Orange
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,36 +17,16 @@
  */
 //! Serialize a Hurl run result to a file.
 //!
-//! Therea are two supported serialisation:
+//! There are two supported serialisation:
+//!
 //! - JSON: the whole run is serialized to JSON (like the [HAR](https://en.wikipedia.org/wiki/HAR_(file_format)) format)
+//!   [`self::json::write_json`]
 //! - raw: the last response of a run is serialized to a file. The body can be automatically uncompress
-//! or written as it.
+//!   or written as it [`self::raw::write_last_body`]
 mod error;
 mod json;
 mod raw;
-mod stdout;
 
-use std::io::Write;
-use std::path::Path;
-
-pub use self::error::Error;
+pub use self::error::OutputError;
 pub use self::json::write_json;
-pub use self::raw::write_body;
-
-/// Writes `bytes` to the file `filename` or stdout by default.
-fn write_output(bytes: &Vec<u8>, filename: &Option<String>) -> Result<(), Error> {
-    match filename {
-        None => stdout::write_stdout(bytes.as_slice())?,
-        Some(filename) => {
-            let path = Path::new(filename.as_str());
-            let mut file = match std::fs::File::create(path) {
-                Ok(file) => file,
-                Err(e) => return Err(Error::from_path(e, filename)),
-            };
-            if let Err(e) = file.write_all(bytes.as_slice()) {
-                return Err(Error::from_path(e, filename));
-            }
-        }
-    }
-    Ok(())
-}
+pub use self::raw::write_last_body;

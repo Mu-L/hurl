@@ -24,20 +24,20 @@ hurl --ipv4 --parallel --test `
   tests_ok/cookie/cookie_storage.hurl `
   tests_ok/empty/empty.hurl `
   tests_ok/encoding/encoding.hurl `
-  tests_ok/expect.hurl `
-  tests_ok/filter.hurl `
-  tests_ok/float.hurl `
-  tests_ok/follow_redirect_option.hurl `
-  tests_ok/form_params.hurl `
-  tests_ok/gb2312.hurl `
-  tests_ok/get_large.hurl `
-  tests_ok/graphql.hurl `
-  tests_ok/head.hurl `
-  tests_ok/headers.hurl `
-  tests_ok/hello.hurl `
-  tests_ok/hello_gb2312.hurl `
-  tests_ok/insecure_option.hurl `
-  tests_ok/json_output.hurl `
+  tests_ok/expect/expect.hurl `
+  tests_ok/filter/filter.hurl `
+  tests_ok/float/float.hurl `
+  tests_ok/follow_redirect/follow_redirect_option.hurl `
+  tests_ok/form_params/form_params.hurl `
+  tests_ok/gb2312/gb2312.hurl `
+  tests_ok/get_large/get_large.hurl `
+  tests_ok/graphql/graphql.hurl `
+  tests_ok/head/head.hurl `
+  tests_ok/header/headers.hurl `
+  tests_ok/hello/hello.hurl `
+  tests_ok/hello/hello_gb2312.hurl `
+  tests_ok/insecure/insecure_option.hurl `
+  tests_ok/json_output/json_output.hurl `
   tests_ok/method.hurl `
   tests_ok/multilines.hurl `
   tests_ok/multipart_form_data.hurl `

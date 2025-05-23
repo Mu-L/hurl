@@ -441,6 +441,9 @@ impl Client {
         if let Some(max_send_speed) = options.max_send_speed {
             self.handle.max_send_speed(max_send_speed.0)?;
         }
+        if let Some(pinned_pub_key) = &options.pinned_pub_key {
+            self.handle.pinned_public_key(pinned_pub_key)?;
+        }
 
         self.set_ssl_options(options.ssl_no_revoke)?;
 
@@ -462,7 +465,7 @@ impl Client {
             .iter()
             .map(|h| h.as_str())
             .collect::<Vec<&str>>();
-        let headers = &request_spec.headers.aggregate_raw_headers(&options_headers);
+        let headers = &request_spec.headers.with_raw_headers(&options_headers);
         self.set_headers(
             headers,
             request_spec.implicit_content_type.as_deref(),
